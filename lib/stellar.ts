@@ -11,8 +11,6 @@ export const config = {
   horizonUrl: "https://horizon-testnet.stellar.org",
   networkPassphrase: StellarSdk.Networks.TESTNET,
   friendbotUrl: "https://friendbot.stellar.org",
-  /** Freighter reports the active network with this label when on Testnet. */
-  expectedWalletNetwork: "TESTNET",
 } as const;
 
 /** Single shared Horizon server instance for the whole app. */

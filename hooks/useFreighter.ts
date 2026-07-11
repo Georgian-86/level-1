@@ -32,6 +32,7 @@ export function useFreighter(): FreighterState {
   const [connected, setConnected] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
   const [network, setNetwork] = useState<string | null>(null);
+  const [networkPassphrase, setNetworkPassphrase] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
   // On mount: detect the extension and silently restore a prior authorization.
@@ -52,12 +53,13 @@ export function useFreighter(): FreighterState {
       const { address: addr } = await getAddress();
       if (cancelled || !addr) return;
 
-      const { network: net } = await getNetwork();
+      const { network: net, networkPassphrase: passphrase } = await getNetwork();
       if (cancelled) return;
 
       setConnected(true);
       setAddress(addr);
       setNetwork(net ?? null);
+      setNetworkPassphrase(passphrase ?? null);
     })();
 
     return () => {
@@ -81,11 +83,12 @@ export function useFreighter(): FreighterState {
       if (error) throw new Error(readError(error));
       if (!addr) throw new Error("No address returned — access was not granted.");
 
-      const { network: net } = await getNetwork();
+      const { network: net, networkPassphrase: passphrase } = await getNetwork();
 
       setConnected(true);
       setAddress(addr);
       setNetwork(net ?? null);
+      setNetworkPassphrase(passphrase ?? null);
     } finally {
       setConnecting(false);
     }
@@ -97,6 +100,7 @@ export function useFreighter(): FreighterState {
     setConnected(false);
     setAddress(null);
     setNetwork(null);
+    setNetworkPassphrase(null);
   }, []);
 
   const sign = useCallback(
@@ -113,8 +117,12 @@ export function useFreighter(): FreighterState {
     [connected, address]
   );
 
+  // Compare the network *passphrase* (authoritative) rather than the label,
+  // whose casing/format varies between Freighter versions.
   const wrongNetwork =
-    connected && network !== null && network !== config.expectedWalletNetwork;
+    connected &&
+    networkPassphrase !== null &&
+    networkPassphrase !== config.networkPassphrase;
 
   return {
     installed,

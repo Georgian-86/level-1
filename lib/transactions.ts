@@ -7,8 +7,13 @@ export interface PaymentResult {
 }
 
 /**
- * Build an unsigned native XLM payment transaction and return its XDR.
- * The XDR is handed to the wallet (Freighter) for signing.
+ * Build an unsigned native XLM transfer and return its XDR for the wallet to sign.
+ *
+ * On Stellar a plain `payment` fails (op_no_destination) if the destination
+ * account doesn't exist on-chain yet. So we first check whether the destination
+ * exists: if it does, we send a `payment`; if it doesn't, we send a
+ * `createAccount` instead, which funds and creates it. Creating an account
+ * requires a starting balance of at least 1 XLM.
  */
 export async function buildPaymentTx(
   source: string,
@@ -18,21 +23,46 @@ export async function buildPaymentTx(
   // loadAccount also fetches the current sequence number for the source.
   const account = await horizon.loadAccount(source);
 
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: StellarSdk.BASE_FEE,
-    networkPassphrase: config.networkPassphrase,
-  })
-    .addOperation(
-      StellarSdk.Operation.payment({
+  const destinationExists = await accountExists(destination);
+
+  if (!destinationExists && Number(amount) < 1) {
+    throw new Error(
+      "That address is a brand-new account, so this first payment creates it and must be at least 1 XLM."
+    );
+  }
+
+  const operation = destinationExists
+    ? StellarSdk.Operation.payment({
         destination,
         asset: StellarSdk.Asset.native(),
         amount,
       })
-    )
+    : StellarSdk.Operation.createAccount({
+        destination,
+        startingBalance: amount,
+      });
+
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase: config.networkPassphrase,
+  })
+    .addOperation(operation)
     .setTimeout(180)
     .build();
 
   return tx.toXDR();
+}
+
+/** Returns true if the account exists on-chain (has been funded). */
+async function accountExists(address: string): Promise<boolean> {
+  try {
+    await horizon.loadAccount(address);
+    return true;
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } })?.response?.status;
+    if (status === 404) return false;
+    throw error;
+  }
 }
 
 /**
